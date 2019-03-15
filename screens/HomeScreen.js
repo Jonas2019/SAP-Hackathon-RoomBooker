@@ -1,188 +1,163 @@
-import React from 'react';
-import {
-  Image,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { WebBrowser } from 'expo';
-
-import { MonoText } from '../components/StyledText';
+import React from "react";
+import { SectionList, StyleSheet, Button, ListView, View, Text, AppRegistry, TextInput, ScrollView, TouchableHighlight} from "react-native";
+import { createStackNavigator, createAppContainer } from "react-navigation";
+import SearchInput, { createFilter } from 'react-native-search-filter';
+import UrlPath from "../constants/UrlPath"
+import {SearchBar} from 'react-native-elements';
+import RoomsDetailsScreen from './RoomDetailsScreen';
 
 export default class HomeScreen extends React.Component {
-  static navigationOptions = {
-    header: null,
+
+  sortByFree(rooms) {
+    return rooms.sort((x,y) => x.busy)
+  }
+
+  constructor(){
+    super();
+    const ds = new ListView.DataSource({rowHasChanged: (r1, r2) => r1 !== r2});
+    const roomList = [
+      {"name": "pineapple","capacity": 5,"busy": true},
+      {"name": "cake","capacity": 5,"busy": false},
+      {"name":"biscuit","capacity": 5,"busy": true},
+      {"name": "cupcake","capacity": 5,"busy": false},
+      {"name": "cookie","capacity": 5,"busy": true},
+      {"name": "pasta","capacity": 5,"busy": false}
+    ];
+    this.state = {
+        search: '',
+        rooms: roomList,
+        isFocused: false,
+        userDataSource: ds.cloneWithRows(this.sortByFree(roomList)),
+    };
+  }
+
+  fetchRooms(floorNum) {
+    fetch(UrlPath.url + "/floors/" + floorNum)
+      .then((response) => response.json())
+      .then((response) => {
+        console.log("\n\nrequest succeeded, got response " + JSON.stringify(response) + "\n\n")
+        this.setState({
+          rooms: response,
+          userDataSource: this.state.userDataSource.cloneWithRows(this.sortByFree(response)),
+        })
+      })
+  }
+  
+  componentDidMount() {
+    this.subs = [
+      this.props.navigation.addListener("didFocus", () => {
+        this.setState({ isFocused: true })
+        this.fetchRooms(1);
+      }),
+      this.props.navigation.addListener("willBlur", () => {
+        this.setState({ isFocused: false })
+      })
+    ];
+  }
+  
+  updateSearch=search=>{
+    this.setState({search});
+    this.setState({userDataSource: this.state.userDataSource.cloneWithRows(this.sortByFree(this.state.rooms).filter(x => x.name.startsWith(search.toLowerCase())))});
   };
+
+  onPressRow(room){
+    const {navigate} = this.props.navigation;
+    navigate('RoomDetails', {floorNum: 1, roomDetails: room});
+  }
+
+  renderRow(room, sectionId, rowId, highlightRow){
+    var occupied;
+    if (room.busy) {
+      occupied="Occupied"
+    } else {
+      occupied="Free!"
+    }
+
+    return(
+        <TouchableHighlight onPress={() => {this.onPressRow(room)}}>
+        <View style={styles.row}>
+            <Text style={styles.rowText}>{room.name} </Text> 
+            <Text style={(room.busy) ?  styles.occupiedText : styles.notOccupiedText}>{occupied}</Text>
+        </View>
+        </TouchableHighlight>
+    )
+  }
+  
+  onPressQRButton(){
+    const {navigate} = this.props.navigation;
+    navigate('Scan', {roomDetails: this.state.rooms});
+  }
 
   render() {
+    const {search} = this.state;
     return (
-      <View style={styles.container}>
-        <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-          <View style={styles.welcomeContainer}>
-            <Image
-              source={
-                __DEV__
-                  ? require('../assets/images/robot-dev.png')
-                  : require('../assets/images/robot-prod.png')
-              }
-              style={styles.welcomeImage}
-            />
-          </View>
+        <View>
+          <SearchBar
+          placeholder="Type here"
+          onChangeText={this.updateSearch}
+          value={search}
+          />
+          <ListView 
+              dataSource={this.state.userDataSource}
+              renderRow={this.renderRow.bind(this)}
+          />
+          <View style={{paddingTop:200, height:300}}>
+            <TouchableHighlight style={styles.button} onPress={() => {this.fetchRooms(1)}}>
+                <Text style={styles.buttonText}>Reload Rooms?</Text>
+            </TouchableHighlight>
+            <View style = {{flex: 1}}/>
 
-          <View style={styles.getStartedContainer}>
-            {this._maybeRenderDevelopmentModeWarning()}
-
-            <Text style={styles.getStartedText}>Get started by opening</Text>
-
-            <View style={[styles.codeHighlightContainer, styles.homeScreenFilename]}>
-              <MonoText style={styles.codeHighlightText}>screens/HomeScreen.js</MonoText>
-            </View>
-
-            <Text style={styles.getStartedText}>
-              Change this text and your app will automatically reload.
-            </Text>
-          </View>
-
-          <View style={styles.helpContainer}>
-            <TouchableOpacity onPress={this._handleHelpPress} style={styles.helpLink}>
-              <Text style={styles.helpLinkText}>Help, it didn’t automatically reload!</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-
-        <View style={styles.tabBarInfoContainer}>
-          <Text style={styles.tabBarInfoText}>This is a tab bar. You can edit it in:</Text>
-
-          <View style={[styles.codeHighlightContainer, styles.navigationFilename]}>
-            <MonoText style={styles.codeHighlightText}>navigation/MainTabNavigator.js</MonoText>
+            <TouchableHighlight style={styles.button} onPress={() => {this.onPressQRButton()}}>
+              <Text style={styles.buttonText}>Switch to QR</Text>
+            </TouchableHighlight>
           </View>
         </View>
-      </View>
-    );
+        );
   }
-
-  _maybeRenderDevelopmentModeWarning() {
-    if (__DEV__) {
-      const learnMoreButton = (
-        <Text onPress={this._handleLearnMorePress} style={styles.helpLinkText}>
-          Learn more
-        </Text>
-      );
-
-      return (
-        <Text style={styles.developmentModeText}>
-          Development mode is enabled, your app will be slower but you can use useful development
-          tools. I am curious about if this will change {learnMoreButton}
-        </Text>
-      );
-    } else {
-      return (
-        <Text style={styles.developmentModeText}>
-          You are not in development mode, your app will run at full speed.
-        </Text>
-      );
-    }
-  }
-
-  _handleLearnMorePress = () => {
-    WebBrowser.openBrowserAsync('https://docs.expo.io/versions/latest/guides/development-mode');
-  };
-
-  _handleHelpPress = () => {
-    WebBrowser.openBrowserAsync(
-      'https://docs.expo.io/versions/latest/guides/up-and-running.html#can-t-see-your-changes'
-    );
-  };
 }
 
+    //TODO: make noor chan change this god awful styling later
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingTop: 15,
     backgroundColor: '#fff',
   },
-  developmentModeText: {
-    marginBottom: 20,
-    color: 'rgba(0,0,0,0.4)',
-    fontSize: 14,
-    lineHeight: 19,
+  row: {
+    flexDirection:'row',
+    justifyContent:'center',
+    padding:10,
+    backgroundColor: '#f4f4f4',
+    marginBottom:3
+  },
+  rowText: {
+    fontSize:16,
+    fontWeight:'bold',
+    flex:1
+  },
+  occupiedText: {
+    fontSize:16,
+    fontWeight:'bold',
+    flex:1,
+    textAlign:'right',
+    color: 'red'
+  },
+  notOccupiedText: {
+    fontSize:16,
+    fontWeight:'bold',
+    flex:1,
+    textAlign:'right',
+    color: 'green'
+  },
+  button: {
+    backgroundColor: 'purple',
+    flex: 2
+  },
+  buttonText: {
+    fontSize: 25,
+    fontWeight:'bold',
+    color: 'white',
     textAlign: 'center',
-  },
-  contentContainer: {
-    paddingTop: 30,
-  },
-  welcomeContainer: {
-    alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 20,
-  },
-  welcomeImage: {
-    width: 100,
-    height: 80,
-    resizeMode: 'contain',
-    marginTop: 3,
-    marginLeft: -10,
-  },
-  getStartedContainer: {
-    alignItems: 'center',
-    marginHorizontal: 50,
-  },
-  homeScreenFilename: {
-    marginVertical: 7,
-  },
-  codeHighlightText: {
-    color: 'rgba(96,100,109, 0.8)',
-  },
-  codeHighlightContainer: {
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    borderRadius: 3,
-    paddingHorizontal: 4,
-  },
-  getStartedText: {
-    fontSize: 17,
-    color: 'rgba(96,100,109, 1)',
-    lineHeight: 24,
-    textAlign: 'center',
-  },
-  tabBarInfoContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    ...Platform.select({
-      ios: {
-        shadowColor: 'black',
-        shadowOffset: { height: -3 },
-        shadowOpacity: 0.1,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 20,
-      },
-    }),
-    alignItems: 'center',
-    backgroundColor: '#fbfbfb',
-    paddingVertical: 20,
-  },
-  tabBarInfoText: {
-    fontSize: 17,
-    color: 'rgba(96,100,109, 1)',
-    textAlign: 'center',
-  },
-  navigationFilename: {
-    marginTop: 5,
-  },
-  helpContainer: {
-    marginTop: 15,
-    alignItems: 'center',
-  },
-  helpLink: {
-    paddingVertical: 15,
-  },
-  helpLinkText: {
-    fontSize: 14,
-    color: '#2e78b7',
-  },
-});
+    flex: 1
+  }
+})
